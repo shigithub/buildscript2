@@ -1,6 +1,14 @@
 Description
 ===
 
+Prerequisites
+---
+To succesfully run the script following artifacts must be installed beforehand:
+* svn command line
+* python cli
+
+To run:
+
 runWithCfg [result_package] [svn_orig_package_revision_uri] [svn_dest_package_revision_uri] [project_name]
 
 * [result_package] - path to result ZIP package e.g. c:\project_1_1_repack.zip

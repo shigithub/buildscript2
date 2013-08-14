@@ -1,7 +1,6 @@
 from filecmp import dircmp
 from optparse import OptionParser
-import os, sys, shutil, os.path
-import fnmatch
+import os, sys, shutil, os.path, fnmatch
 
 FILE_REMOVED = 'D'
 FILE_ADDED = 'A'
@@ -10,15 +9,18 @@ FILE_MODIFIED = 'M';
 INCLUDE_FILE_PATTERN = 'INCL'
 EXCLUDE_FILE_PATTERN = 'EXCL'
 
+# Fiters diff entries by type of operation
 def filterByChangeType (diffData, filter):
 	return [elem for elem in diffData if elem['op'] in filter]
 
-def filterByFilePattern(diffData, filter, type):
+	
+# Filters diff entries by Unix-style filename matchers either in an inclusive or exclusive manner
+def filterByFilePattern(diffData, fnMatchers, type):
 
 	resList = []
 	for entry in diffData:
 		found = False
-		for pattern in filter.split(','):
+		for pattern in fnMatchers.split(','):
 			if fnmatch.fnmatch(entry['file'], pattern.strip()):
 				found = True
 				break
@@ -27,36 +29,35 @@ def filterByFilePattern(diffData, filter, type):
 			resList.append(entry)
 	
 	return resList
+
 	
-	
+# Creates a list of diff entries based on differences between source and destination directory
 def parseDiff(srcDir, dstDir) :
 
-	print 'Checking for differences...'
-	
 	resList = []
-	parseDiff_(dircmp(srcDir, dstDir), resList)
-	
+
+	def parseDiff_(dcmp):
+
+		for name in dcmp.right_only:
+			resList.append({'op': FILE_ADDED, 'dir' : dcmp.right, 'file' : name})
+
+		for name in dcmp.left_only:		
+			resList.append({'op' : FILE_REMOVED, 'dir' : dcmp.left, 'file' : name})
+			
+		for name in dcmp.diff_files:	
+			resList.append({ 'op' : FILE_MODIFIED, 'dir' : dcmp.right, 'file': name})
+			   
+		for sub_dcmp in dcmp.subdirs.values():
+			parseDiff_(sub_dcmp)
+
+	print 'Checking for differences...'
+	parseDiff_(dircmp(srcDir, dstDir))
 	print 'Differences parsed.'	
 	return resList
 
 	
-def parseDiff_(dcmp, resList):
-
-	for name in dcmp.right_only:
-		resList.append({'op': FILE_ADDED, 'dir' : dcmp.right, 'file' : name})
-		#createEntry(FILE_ADDED, os.path.relpath(dcmp.right, dstDir), name))
-
-	for name in dcmp.left_only:		
-		resList.append({'op' : FILE_REMOVED, 'dir' : dcmp.left, 'file' : name})
-		# resList.append(createEntry(FILE_REMOVED, os.path.relpath(dcmp.left, srcDir), name))
-		
-	for name in dcmp.diff_files:	
-		resList.append({ 'op' : FILE_MODIFIED, 'dir' : dcmp.right, 'file': name})
-		#resList.append(createEntry(FILE_MODIFIED, os.path.relpath(dcmp.right, dstDir), name))
-		   
-	for sub_dcmp in dcmp.subdirs.values():
-		parseDiff_(sub_dcmp,  resList)
-		
+# Creates an actual diff in a location pointed by resDir. All files parsed by parseDiff function are put into the diff directory.
+# There is also a log file added to the directory which stores all changes that should be done when a patch is applied.
 def createDiff(resDir, srcDir, dstDir, diffData) :
 
 	def createEntry(item):	
@@ -83,8 +84,7 @@ def createDiff(resDir, srcDir, dstDir, diffData) :
 		baseDir = os.path.dirname(fullPath)
 		if not os.path.exists(baseDir):
 			os.makedirs(baseDir)	
-		
-		
+				
 		isFromDest = True if op in [FILE_ADDED, FILE_MODIFIED] else False
 		resource = (dstDir if isFromDest else srcDir) + '\\' + path
 		
@@ -95,8 +95,7 @@ def createDiff(resDir, srcDir, dstDir, diffData) :
 	if os.path.exists(resDir):
 		shutil.rmtree(resDir)
 	os.makedirs(resDir)	
-		
-		
+				
 	diffLog = []
 	for item in diffData:		
 		op, path = createEntry(item)
@@ -125,20 +124,21 @@ def createDiffLog(resDir, changeLog):
 
 
 def main():
+
 	parser = OptionParser(usage="usage: %prog [options] filename",
 						version="%prog 1.0")
 	parser.add_option("-x", "--exclude-file-pattern",
                       dest="excludes",
 					  default="",
-                      help="TODO...")
+                      help="list of comma-separated Unix-style filename patterns e.g. *.pdb,*.asmx that are to be EXCLUDED in the patch")
 	parser.add_option("-i", "--include-file-pattern",
                       dest="includes",
                       default="",
-                      help="TODO...")
+                      help="list of comma-separated Unix-style filename patterns e.g. *.pdb,*.asmx that are to be INCLUDED in the patch")
 	parser.add_option("-c", "--change-types",
                       dest="changetypes",
                       default=FILE_MODIFIED + FILE_ADDED + FILE_REMOVED,
-                      help="TODO...")
+                      help="types of changes to be included in the patch. Possible types are: A - files added, M - files modified, D - files deleted. Examples: AM, AD, MD, AMD etc")
 	(options, args) = parser.parse_args()
 
 
